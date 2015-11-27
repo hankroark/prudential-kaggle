@@ -26,3 +26,4 @@ The following variables are discrete:
 
 Medical_History_1, Medical_History_15, Medical_History_24, Medical_History_32
 
+Medical_Keyword_1-48 are dummy variables.
