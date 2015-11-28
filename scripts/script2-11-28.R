@@ -24,18 +24,18 @@ clf <- xgboost(data        = data.matrix(train[,feature.names]),
                label       = train$Response,
                eta         = 0.025,
                depth       = 22,
-               nrounds     = 4000,
+               nrounds     = 4215,
                objective   = "reg:linear",
-               missing     = NaN,
-               eval_metric = "rmse",colsample_bytree=0.7,min_child_weight=3,subsample=0.7)
+               eval_metric = "rmse",colsample_bytree=0.69,min_child_weight=3,subsample=0.71)
 
 cat("making predictions\n")
 submission <- data.frame(Id=test$Id)
-submission$Response <- as.integer(round(predict(clf, data.matrix(test[,feature.names]),missing=NaN)))
+submission$Response <- as.integer(round(predict(clf, data.matrix(test[,feature.names]))))
 
 # I pretended this was a regression problem and some predictions may be outside the range
 submission[submission$Response<1, "Response"] <- 1
 submission[submission$Response>8, "Response"] <- 8
+submission[submission$Response==3,"Response"] <- 2
 
 cat("saving the submission file\n")
-write_csv(submission, "../submissions/xgb-27-11.csv")
+write_csv(submission, "xgb-28-11.csv")
