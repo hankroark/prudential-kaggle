@@ -26,11 +26,12 @@ clf <- xgboost(data        = data.matrix(train[,feature.names]),
                depth       = 22,
                nrounds     = 4215,
                objective   = "reg:linear",
+               missing     = NaN,
                eval_metric = "rmse",colsample_bytree=0.69,min_child_weight=3,subsample=0.71)
 
 cat("making predictions\n")
 submission <- data.frame(Id=test$Id)
-submission$Response <- as.integer(round(predict(clf, data.matrix(test[,feature.names]))))
+submission$Response <- as.integer(round(predict(clf, data.matrix(test[,feature.names]), missing=NaN)))
 
 # I pretended this was a regression problem and some predictions may be outside the range
 submission[submission$Response<1, "Response"] <- 1

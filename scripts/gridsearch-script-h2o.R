@@ -3,9 +3,23 @@ setwd("~/Documents/github/prudential-kaggle/submissions")
 # H2O Starter Script
 library(h2o)
 library(readr)
-
+library(psych)
+library(ggplot2)
+library(RColorBrewer)
+rf <- colorRampPalette(rev(brewer.pal(11,'Spectral')))
+r <- rf(32)
+                    
 h2o.init(nthreads=-1)
 
+response_count <- 8
+weight_matrix <- matrix( rep(0, response_count**2), ncol = response_count, nrow = response_count )
+for( i in 1:response_count ) {
+  for( j in 1:response_count) {
+    if( i == j ) { value = 0 }
+    else { value = ((i-j)**2 / (response_count - 1)**2 ) }
+    weight_matrix[i, j] <- value
+  }
+}
 
 categoricalVariables = c("Product_Info_1", "Product_Info_2", "Product_Info_3", "Product_Info_5", "Product_Info_6", "Product_Info_7", 
                          "Employment_Info_2", "Employment_Info_3", "Employment_Info_5", 
@@ -31,9 +45,64 @@ independentVariables = names(train)[2:(ncol(train)-1)]
 dependentVariable = names(train)[128]
 
 cat("creating model")
+gbm_hyper_params <- list(ntrees=c(300,500),
+                         learn_rate=c(0.03,0.01),
+                         max_depth=c(5,10,20),
+                         min_rows=c(10,5,3))
+frames <- h2o.splitFrame(train, ratios=0.7, seed=1)
+training_frame <- frames[[1]]
+validation_frame <- frames[[2]]
+gbm_grid <- h2o.grid("gbm", grid_id="grid_1", 
+                     x=independentVariables, y=dependentVariable, 
+                     training_frame = training_frame, validation_frame = validation_frame, 
+                     distribution="gaussian", keep_cross_validation_predictions = FALSE,
+                     hyper_params = gbm_hyper_params)
 
-gbm_model <- h2o.gbm(x=independentVariables, y=dependentVariable, training_frame = train,
-                     ntrees=400, max_depth=10)
+show(gbm_grid)
+
+grid_models <- lapply(gbm_grid@model_ids, function(model_id) { model = h2o.getModel(model_id) })
+
+best_kappa <- 9999
+best_mse <- 99999
+for (i in 1:length(grid_models)) {
+  mse <- grid_models[[i]]@model$validation_metrics@metrics$MSE
+  if( mse < best_mse ) {
+    best_mse <- mse
+    best_mse_model <- grid_models[[i]]
+  }
+  # kappa calc
+  predictions <- as.data.frame( predict(grid_models[[i]], validation_frame) )
+  actuals <- as.data.frame( validation_frame$Response )
+  combined <- cbind(round(predictions$predict), actuals )
+  names(combined) <- c("Predicted", "Actual")
+  combined[combined$Predicted<1, "Predicted"] <- 1
+  combined[combined$Predicted>8, "Predicted"] <- 8
+
+  kappa <- wkappa( combined, w=weight_matrix )
+  if( kappa$weighted.kappa < best_kappa ) {
+    best_kappa <- kappa$weighted.kappa
+    best_kappa_model <- grid_models[[i]]
+  }
+   
+}
+best_mse_model
+best_kappa_model
+
+
+ 
+
+predictions <- as.data.frame( predict(best_kappa_model, validation_frame) )
+actuals <- as.data.frame( validation_frame$Response )
+combined <- cbind(round(predictions$predict), actuals )
+names(combined) <- c("Predicted", "Actual")
+combined[combined$Predicted<1, "Predicted"] <- 1
+combined[combined$Predicted>8, "Predicted"] <- 8
+# combined[combined$Predicted==3, "Predicted"] <- 2
+
+ggplot(combined, aes(Actual, Predicted)) + geom_jitter()
+
+final_gbm_model <- h2o.gbm(x=independentVariables, y=dependentVariable, training_frame = train,
+                           ntrees=400, max_depth=10)
 
 cat("make predictions")
 prediction <- as.data.frame( predict(final_gbm_model, test) )
@@ -49,5 +118,5 @@ submission[submission$Response>8, "Response"] <- 8
 submission[submission$Response==3,"Response"] <- 2
 
 cat("saving the submission file\n")
-write_csv(submission, "h2ogbm.csv")
+write_csv(submission, "h2ogbm-6-12-v2.csv")
 
